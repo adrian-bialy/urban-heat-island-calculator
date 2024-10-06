@@ -18,7 +18,7 @@ The **Heat Island API** is a Flask-based web service designed to process environ
 1. **Initialization**: The Flask application is initialized in `src/app.py`, where configurations are loaded, and blueprints are registered.
 2. **Endpoint Handling**: The `/process` endpoint defined in `src/routes/process.py` accepts POST requests with JSON payloads containing environmental data.
 3. **Data Processing**: Upon receiving a request, the API validates the input, processes each location's data (e.g., adjusting temperature based on green distance), and optionally sends the processed data to an external backend.
-4. **Response**: The API responds with the processed data and a success message or appropriate error messages if issues arise.
+4. **Response**: The API responds with the processed data and a success message or appropriate error messages if issues arise. Data is posted to Heat Island App (https://github.com/vojcc/heat-islands).
 
 ## Creating a POST Request
 
@@ -60,3 +60,10 @@ curl -X POST http://156.17.72.58:5000/process \
                 }
             ]
         }'
+```
+**Sample bash script with request:**
+``` bash
+bash upload.sh
+```
+
+**Note**: message.json is a sample data input.
