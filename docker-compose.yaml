@@ -5,7 +5,7 @@ services:
     build: .
     image: bober/heat-island-processor:1.0.0
     ports:
-      - "5000:5000"
+      - "80:5000"
     environment:
       SEND_TO_EXTERNAL_API: "True"
     restart: unless-stopped

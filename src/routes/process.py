@@ -1,109 +1,68 @@
+# src/routes/process.py
+
 from flask import Blueprint, request, jsonify, current_app
-import logging
-import uuid  # For generating a unique session_id
 from ..services.external_api import send_to_external_backend
+import uuid
 
 process_bp = Blueprint('process_bp', __name__)
 
 @process_bp.route('/process', methods=['POST'])
-def process_points():
-    # Log the receipt of a new request
-    current_app.logger.info(f"Received request from {request.remote_addr}")
+def process():
+    data = request.get_json()
 
-    try:
-        data = request.get_json()
-        if not data or not isinstance(data, dict):
-            current_app.logger.warning(
-                f"Invalid input from {request.remote_addr}: Expected a JSON object with 'places' key."
-            )
-            return jsonify({'error': 'Invalid input, expected a JSON object with "places" key'}), 400
+    # Validate input data
+    if not data:
+        return jsonify({'error': 'Invalid JSON data'}), 400
 
-        points_list = data.get('places')
-        if points_list is None or not isinstance(points_list, list):
-            current_app.logger.warning(
-                f"Invalid 'places' data from {request.remote_addr}."
-            )
-            return jsonify({'error': 'Missing or invalid "places" key in input'}), 400
+    session_id = data.get('session_id')
+    places = data.get('places')
 
-        processed_points = []
+    if not session_id:
+        return jsonify({'error': 'Missing session_id'}), 400
 
-        for point in points_list:
-            latitude = point.get('latitude')
-            longitude = point.get('longitude')
-            temperature = point.get('temperature')
-            green_distance = point.get('greenDistance', 0)
-            street_distance = point.get('streetDistance', 0)  # Optional with default 0
-            shadow = point.get('shadow')  # Optional, not used in calculation
-            is_changed = point.get('isChanged', False)
+    if not places:
+        return jsonify({'error': 'Missing places data'}), 400
 
-            # Validate required inputs
-            if latitude is None or longitude is None or temperature is None:
-                current_app.logger.warning(
-                    f"Missing latitude, longitude, or temperature in point from {request.remote_addr}."
-                )
-                return jsonify({'error': 'Missing latitude, longitude, or temperature in point'}), 400
+    if not isinstance(places, list):
+        return jsonify({'error': 'Places must be a list'}), 400
 
-            # Process only if isChanged is true
-            if is_changed:
-                # Perform calculations
-                temp_change = 0
+    processed_places = []
+    for place in places:
+        # Validate required fields
+        required_fields = ['latitude', 'longitude', 'temperature', 'greenDistance', 'isChanged']
+        for field in required_fields:
+            if field not in place:
+                return jsonify({'error': f'Missing field {field} in place data'}), 400
 
-                # Apply greenDistance factor (0 to -5 degrees)
-                if 0 <= green_distance <= 1:
-                    temp_change += (-green_distance * 5)
-                else:
-                    current_app.logger.warning(
-                        f"Invalid greenDistance value from {request.remote_addr}: {green_distance}"
-                    )
-                    return jsonify({'error': 'greenDistance must be between 0 and 1'}), 400
+        # Calculate temperature change based on provided logic
+        temp_change = (-place.get('greenDistance', 0) * 5)  # Example logic
+        if 'streetDistance' in place:
+            temp_change += (place['streetDistance'] * 5)
+        if place.get('shadow', False):
+            temp_change -= 2  # Example adjustment for shadow
 
-                # Apply streetDistance factor if provided
-                if street_distance is not None:
-                    if 0 <= street_distance <= 1:
-                        temp_change += (street_distance * 5)
-                    else:
-                        current_app.logger.warning(
-                            f"Invalid streetDistance value from {request.remote_addr}: {street_distance}"
-                        )
-                        return jsonify({'error': 'streetDistance must be between 0 and 1'}), 400
+        new_temperature = place['temperature'] + temp_change
 
-                # Update temperature
-                temperature += temp_change
+        # Round to one decimal if necessary
+        new_temperature = round(new_temperature, 1)
 
-            # Append the point to the processed_points list
-            processed_points.append({
-                'latitude': latitude,
-                'longitude': longitude,
-                'temperature': temperature
-            })
+        # Update place data
+        place['temperature'] = new_temperature
+        processed_places.append(place)
 
-        session_id = str(uuid.uuid4())
+    response = {
+        'session_id': session_id,
+        'places': processed_places
+    }
 
-        # Prepare the output data
-        output_data = {
-            'session_id': session_id,
-            'places': processed_points
-        }
-
-        # Check the configuration flag
-        if current_app.config.get('SEND_TO_EXTERNAL_API', False):
-            # Send data to the external backend
-            external_backend_url = current_app.config['EXTERNAL_BACKEND_URL']
-            success, response_text = send_to_external_backend(external_backend_url, output_data)
-
-            if success:
-                current_app.logger.info(f"Data sent to external API for session_id {session_id}")
-                return jsonify({'message': 'Data sent to external API successfully'}), 200
-            else:
-                current_app.logger.error(
-                    f"Failed to send data to external API for session_id {session_id}: {response_text}"
-                )
-                return jsonify({'error': 'Failed to update external backend', 'details': response_text}), 500
+    # Optionally send to external API
+    if current_app.config['SEND_TO_EXTERNAL_API']:
+        success, response_text = send_to_external_backend(current_app.config['EXTERNAL_BACKEND_URL'], response)
+        if success:
+            response['message'] = 'Data sent to external API successfully'
         else:
-            # Return the output data to the user
-            current_app.logger.info(f"Processed request successfully for session_id {session_id}")
-            return jsonify(output_data), 200
+            response['message'] = 'Failed to send data to external API'
+            response['details'] = response_text
+            return jsonify(response), 500
 
-    except Exception as e:
-        current_app.logger.exception(f"Exception occurred while processing request from {request.remote_addr}")
-        return jsonify({'error': 'Internal server error'}), 500
+    return jsonify(response), 200

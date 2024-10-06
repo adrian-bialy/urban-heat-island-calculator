@@ -1,11 +1,13 @@
-import requests
+# src/services/external_api.py
 
-def send_to_external_backend(url, output_data):
+import requests
+from flask import current_app
+
+def send_to_external_backend(url, data):
     try:
-        response = requests.post(url, json=output_data)
-        if response.status_code == 200:
-            return True, response.text
-        else:
-            return False, response.text
+        response = requests.post(url, json=data, timeout=5)
+        response.raise_for_status()
+        return True, response.text
     except requests.exceptions.RequestException as e:
+        current_app.logger.error(f"Failed to send data to external backend: {e}")
         return False, str(e)
