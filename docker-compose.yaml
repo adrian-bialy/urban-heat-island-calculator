@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  heat-island-processor:
+    build: .
+    image: bober/heat-island-processor:1.0.0
+    ports:
+      - "80:5000"
+    environment:
+      SEND_TO_EXTERNAL_API: "True"
+    restart: unless-stopped
